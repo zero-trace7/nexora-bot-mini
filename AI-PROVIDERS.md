@@ -1,6 +1,6 @@
-# Nexora Bot Mini AI Providers
+# ZERO TRACE AI Providers
 
-Nexora Bot Mini keeps the existing OpenAI integration and adds explicit Gemini, DeepSeek, and Pollinations image-generation commands. Provider credentials are read only from the deployment environment; never paste keys into source files or commit them to GitHub.
+ZERO TRACE keeps the existing OpenAI integration and adds explicit Gemini, DeepSeek, and Pollinations image-generation commands. Provider credentials are read only from the deployment environment; never paste keys into source files or commit them to GitHub.
 
 ## Environment variables
 

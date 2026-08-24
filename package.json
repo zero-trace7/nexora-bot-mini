@@ -1,7 +1,7 @@
 {
-  "name": "nexora-bot-mini",
+  "name": "zero-trace-bot",
   "version": "1.0.0",
-  "description": "Nexora Bot Mini - Professional WhatsApp Bot with Management & Downloader Tools",
+  "description": "ZERO TRACE - Professional WhatsApp Bot with Management & Downloader Tools",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
@@ -30,9 +30,9 @@
     "bot",
     "baileys",
     "multi-device",
-    "nexora"
+    "zero-trace"
   ],
-  "author": "Shadow Dev",
+  "author": "ZERO TRACE",
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"

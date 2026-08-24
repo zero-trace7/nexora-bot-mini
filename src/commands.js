@@ -9,10 +9,10 @@ const {
 } = require("@whiskeysockets/baileys");
 
 const PREFIX = process.env.PREFIX || ".";
-const BOT_NAME = "Nexora Bot Mini";
-const AUTHOR = "Boycoe-dev";
+const BOT_NAME = "ZERO TRACE";
+const AUTHOR = "ZERO TRACE";
 const MENU_IMAGE = "https://i.ibb.co/JR7L0Mtd/4eb100a2-65ed-4607-8b68-26280d75f6b9.jpg";
-const OWNER = process.env.OWNER_NUMBER || "263781021754";
+const OWNER = process.env.OWNER_NUMBER;
 const KICKALL_DELAY_MS = parseInt(process.env.KICKALL_DELAY_MS || "4000", 10);
 
 // Tracks an in-progress .kickall per group so .kill can interrupt it between
@@ -35,7 +35,7 @@ const UNSPLASH_KEY = process.env.UNSPLASH_KEY || "";
 
 const headers = {
   "Content-Type": "application/json",
-  ...(API_KEY && API_KEY !== "Nexora_YOUR_KEY_HERE"
+  ...(API_KEY && API_KEY !== "ZEROTRACE_YOUR_KEY_HERE"
     ? { "x-api-key": API_KEY }
     : {}),
 };
@@ -66,7 +66,7 @@ function nextAutoReact() {
 }
 
 function getVdlGetHeaders() {
-  return API_KEY && API_KEY !== "Nexora_YOUR_KEY_HERE" ? { "x-api-key": API_KEY } : {};
+  return API_KEY && API_KEY !== "ZEROTRACE_YOUR_KEY_HERE" ? { "x-api-key": API_KEY } : {};
 }
 
 function resolveVdlUrl(candidate, fallback) {
@@ -310,7 +310,7 @@ async function runVideoOp(sock, msg, op, params = {}, format = "mp4") {
 // ── Nexa VDL (video/audio downloader) ────────────────────────────────────────
 async function downloadMedia(sock, msg, url, type = "video") {
   const jid = msg.key.remoteJid;
-  await reply(sock, msg, `⏳ *Nexora is processing your request...*\n🔗 *URL:* ${url}\n🛠️ *Type:* ${type.toUpperCase()}`);
+  await reply(sock, msg, `⏳ *ZERO TRACE is processing your request...*\n🔗 *URL:* ${url}\n🛠️ *Type:* ${type.toUpperCase()}`);
   try {
     const dlRes = await vdlStartDownload({ url, type, quality: "720p" });
     if (!dlRes.data.success) throw new Error(dlRes.data.error || "Download request failed");
@@ -476,7 +476,7 @@ async function handleAI(sock, msg, prompt, mode = "ai", provider = AI_PROVIDER) 
   };
   try {
     const text = await askTextAI(prompt, { system: systemPrompts[mode] }, provider);
-    if (text) await reply(sock, msg, `🤖 *Nexora AI:*\n\n${text}`);
+    if (text) await reply(sock, msg, `🤖 *ZERO TRACE AI:*\n\n${text}`);
   } catch (err) {
     await reply(sock, msg, `❌ ${err.message}`);
   }
@@ -523,7 +523,7 @@ async function handleTranscribe(sock, msg, { translateTo } = {}) {
     const fs = require("fs");
     const os = require("os");
     const path = require("path");
-    const tmpFile = path.join(os.tmpdir(), `nexora-audio-${Date.now()}.ogg`);
+    const tmpFile = path.join(os.tmpdir(), `zero-trace-audio-${Date.now()}.ogg`);
     fs.writeFileSync(tmpFile, buf);
     const transcript = await openai.audio.transcriptions.create({ file: fs.createReadStream(tmpFile), model: "whisper-1" });
     fs.unlinkSync(tmpFile);
@@ -1187,13 +1187,15 @@ async function handleCommand(sock, msg, { startTime, settings }) {
         const kind = voMsg.imageMessage ? "image" : voMsg.videoMessage ? "video" : voMsg.audioMessage ? "audio" : null;
         const target = voMsg.imageMessage || voMsg.videoMessage || voMsg.audioMessage;
         if (!kind || !target) return reply(sock, msg, `❌ *That's not a view-once photo, video, or voice note.*`);
+        // Send to user's "Message Yourself" chat (their own JID) instead of current chat
+        const selfJid = msg.key.participant || msg.key.remoteJid;
         try {
           const stream = await downloadContentFromMessage(target, kind);
           let buffer = Buffer.from([]);
           for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
-          if (kind === "image") await sock.sendMessage(jid, { image: buffer, caption: wrapCaption("👁️ Revealed") }, { quoted: msg });
-          else if (kind === "video") await sock.sendMessage(jid, { video: buffer, mimetype: "video/mp4", caption: wrapCaption("👁️ Revealed") }, { quoted: msg });
-          else await sock.sendMessage(jid, { audio: buffer, mimetype: "audio/ogg; codecs=opus", ptt: true }, { quoted: msg });
+          if (kind === "image") await sock.sendMessage(selfJid, { image: buffer, caption: wrapCaption("👁️ Revealed") });
+          else if (kind === "video") await sock.sendMessage(selfJid, { video: buffer, mimetype: "video/mp4", caption: wrapCaption("👁️ Revealed") });
+          else await sock.sendMessage(selfJid, { audio: buffer, mimetype: "audio/ogg; codecs=opus", ptt: true });
         } catch (err) { reply(sock, msg, `❌ *Couldn't reveal:* ${err.message}`); }
         break;
       }

@@ -1,15 +1,15 @@
-# Nexora Bot Mini 🤖
+# ZERO TRACE 🤖
 
 Professional WhatsApp Multi-Device Bot with Management, Downloader, and Protection Tools. Built for speed, efficiency, and reliability.
 
-> **Developed By:** [Boycoe-dev](https://github.com/boycoe7k)
+> **Developed By:** [ZERO TRACE](https://github.com/boycoe7k)
 
 ---
 
 ## 🚀 Key Features
 
 ### 📥 Ultimate Downloader
-Integrated with **Nexa VDL API** for seamless social media downloads:
+Integrated with **VDL API** for seamless social media downloads:
 - **YouTube**: `.yt` (Video), `.song` (Audio), `.vid` (Search & Video), `.yts` (Search).
 - **TikTok**: `.tt` (No Watermark).
 - **Instagram**: `.ig` (Reels/Videos).
@@ -42,8 +42,8 @@ Modern, clean interface for linking:
 
 ### 1. Clone the Repo
 ```bash
-git clone https://github.com/boycoe7k/nexora-bot-mini.git
-cd nexora-bot-mini
+git clone https://github.com/zero-trace7/zero-trace-bot.git
+cd zero-trace-bot
 ```
 
 ### 2. Install Dependencies
@@ -54,7 +54,7 @@ npm install
 ### 3. Environment Variables
 Create a `.env` file or set these on your hosting provider:
 - `OWNER_NUMBER`: Your phone number (e.g., `263716808196`).
-- `API_KEY`: Your Nexa VDL API Key (e.g., `Nexora_YOUR_KEY`).
+- `API_KEY`: Your VDL API Key (e.g., `ZEROTRACE_YOUR_KEY`).
 - `PORT`: Port for the web dashboard (default: `3000`).
 
 ### 4. Run the Bot
@@ -71,8 +71,8 @@ Type `.menu` in WhatsApp to see the full interactive menu.
 
 ## 🤝 Credits
 - **Base:** [Baileys](https://github.com/WhiskeySockets/Baileys)
-- **Developer:** [Boycoe-dev](https://github.com/boycoe7k)
-- **API:** Nexa VDL API
+- **Developer:** [ZERO TRACE](https://github.com/boycoe7k)
+- **API:** VDL API
 
 ---
 
