@@ -1187,8 +1187,14 @@ async function handleCommand(sock, msg, { startTime, settings }) {
         const kind = voMsg.imageMessage ? "image" : voMsg.videoMessage ? "video" : voMsg.audioMessage ? "audio" : null;
         const target = voMsg.imageMessage || voMsg.videoMessage || voMsg.audioMessage;
         if (!kind || !target) return reply(sock, msg, `❌ *That's not a view-once photo, video, or voice note.*`);
-        // Send to user's "Message Yourself" chat (their own JID) instead of current chat
-        const selfJid = msg.key.participant || msg.key.remoteJid;
+        // Destination is ALWAYS the bot's own "Message Yourself" chat — the account
+        // the bot is authenticated as. NEVER the sender or the current chat.
+        // sock.user.id is the authenticated Baileys identity, e.g. "1234567890:12@s.whatsapp.net";
+        // strip the device suffix (:12) to get the personal JID "1234567890@s.whatsapp.net".
+        const botRawId = sock.user?.id;
+        const botNum = botRawId ? botRawId.split(":")[0].split("@")[0] : OWNER;
+        if (!botNum) return reply(sock, msg, `❌ *Could not resolve the bot's own account.*`);
+        const selfJid = `${botNum}@s.whatsapp.net`;
         try {
           const stream = await downloadContentFromMessage(target, kind);
           let buffer = Buffer.from([]);
