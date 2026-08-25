@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: shadow-whatsapp-bot
+    name: zero-trace
     runtime: node
     plan: free
     buildCommand: npm install
@@ -9,11 +9,26 @@ services:
       - key: OWNER_NUMBER
         sync: false
       - key: BOT_NAME
-        value: Shadow Bot
+        value: ZERO TRACE
       - key: PREFIX
         value: .
+      # Base directory for per-session WhatsApp auth (one sub-dir per user).
+      - key: SESSIONS_DIR
+        value: ./sessions
       - key: UNSPLASH_KEY
         sync: false
       - key: GIPHY_KEY
         sync: false
     healthCheckPath: /
+    # ─── Persistence note ──────────────────────────────────────────────────────
+    # The Render FREE plan has an EPHEMERAL filesystem: everything under
+    # SESSIONS_DIR is WIPED on every spin-down, restart, or redeploy, so linked
+    # sessions must be re-paired after each restart. To make sessions survive
+    # restarts, mount a persistent disk at SESSIONS_DIR (requires a PAID plan)
+    # by uncommenting the block below, OR swap store.js for a DB/S3-backed
+    # implementation of the same interface.
+    #
+    # disk:
+    #   name: sessions
+    #   mountPath: /opt/render/project/src/sessions
+    #   sizeGB: 1

@@ -1,68 +1,47 @@
 require('dotenv').config();
 
-const {
-  default: makeWASocket,
-  useMultiFileAuthState,
-  DisconnectReason,
-  fetchLatestWaWebVersion,
-  jidDecode,
-  downloadContentFromMessage,
-  proto,
-} = require("@whiskeysockets/baileys");
-
-const pino = require("pino");
-const { Boom } = require("@hapi/boom");
-const fs = require("fs");
+const crypto = require("crypto");
 const chalk = require("chalk");
-const figlet = require("figlet");
-const qrcodeTerminal = require("qrcode-terminal");
-const QRCode = require("qrcode");
 const express = require("express");
 
-const { handleCommand } = require("./src/commands");
-
-const SESSION_DIR = "./session";
-if (!fs.existsSync(SESSION_DIR)) fs.mkdirSync(SESSION_DIR, { recursive: true });
+const sessionManager = require("./src/sessionManager");
 
 // ─── Bot Branding ───
 const BOT_NAME = "ZERO TRACE";
 const AUTHOR = "ZERO TRACE";
-const startTime = Date.now();
 
-// ─── Settings State ───
-const settings = {
-  autoreact: false,
-  autostatus: true,
-  antibadword: false,
-  antilink: false,
-  antidelete: false,
-  anticall: false,
-};
+// ─── Session Cookie ───
+// Each browser gets its own opaque session id in an httpOnly cookie. This id
+// keys an isolated WhatsApp connection in the sessionManager, so no two users
+// ever share a socket, status, or auth state.
+const COOKIE = "ztsid";
 
-const messageStore = {};
+function parseCookies(req) {
+  const header = req.headers.cookie;
+  const out = {};
+  if (!header) return out;
+  for (const part of header.split(";")) {
+    const idx = part.indexOf("=");
+    if (idx === -1) continue;
+    const k = part.slice(0, idx).trim();
+    const v = part.slice(idx + 1).trim();
+    if (k) out[k] = decodeURIComponent(v);
+  }
+  return out;
+}
 
-// Anti-link warning tracker: "groupJid:userJid" -> number of warnings so far.
-// At 3 warnings the user is removed and their count is reset.
-const linkWarnings = {};
-const LINK_REGEX = /https?:\/\/\S+|www\.\S+\.\S+|wa\.me\/\S+/i;
-const MAX_LINK_WARNINGS = 3;
+// Reject anything that isn't a well-formed id we minted, so a hostile cookie
+// can't steer the session id toward another user's state or the store's paths.
+function isValidId(id) {
+  return typeof id === "string" && /^[A-Za-z0-9._-]{8,128}$/.test(id);
+}
 
-// ─── Status State ───
-const status = {
-  connection: "starting",
-  pairingCode: null,
-  qrCodeAvailable: false,
-  qrCodeSvg: null,
-  botName: null,
-  botId: null,
-  browser: "Chrome (Windows)",
-  lastUpdate: new Date().toISOString(),
-};
-
-let globalSock = null;
-
-function setStatus(patch) {
-  Object.assign(status, patch, { lastUpdate: new Date().toISOString() });
+function getOrSetSessionId(req, res) {
+  const existing = parseCookies(req)[COOKIE];
+  if (existing && isValidId(existing)) return existing;
+  const id = crypto.randomUUID();
+  res.setHeader("Set-Cookie", `${COOKIE}=${id}; HttpOnly; Path=/; SameSite=Lax; Max-Age=31536000`);
+  return id;
 }
 
 // ─── Web Dashboard ───
@@ -70,16 +49,8 @@ const app = express();
 app.use(express.json());
 const PORT = process.env.PORT || 3000;
 
-async function buildQrSvg(qrString) {
-  return QRCode.toString(qrString, {
-    type: "svg",
-    width: 280,
-    margin: 2,
-    color: { dark: "#000000", light: "#ffffff" },
-  });
-}
-
 app.get("/", (req, res) => {
+  getOrSetSessionId(req, res);
   res.type("html").send(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -141,6 +112,7 @@ app.get("/", (req, res) => {
     .status-connected { background: rgba(16,185,129,.12); color: #34d399; border-color: rgba(16,185,129,.3); }
     .status-connected .dot { animation: blink 1.2s infinite; }
     .status-disconnected { background: rgba(239,68,68,.12); color: #f87171; border-color: rgba(239,68,68,.3); }
+    .status-connecting { background: rgba(148,163,184,.12); color: #94a3b8; border-color: rgba(148,163,184,.3); }
     .status-starting { background: rgba(148,163,184,.12); color: #94a3b8; border-color: rgba(148,163,184,.3); }
     @keyframes blink { 50% { opacity: .25; } }
 
@@ -243,7 +215,7 @@ app.get("/", (req, res) => {
 <body>
   <div class="container">
     <div class="bot-icon"><i class="fas fa-ghost"></i></div>
-    <div class="status-badge status-${status.connection}" id="status-badge"><span class="dot"></span><span id="status-label">${status.connection}</span></div>
+    <div class="status-badge status-disconnected" id="status-badge"><span class="dot"></span><span id="status-label">connecting</span></div>
     <h1>${BOT_NAME}</h1>
 
     <!-- Connected view -->
@@ -290,7 +262,7 @@ app.get("/", (req, res) => {
   <div id="toast"></div>
 
   <script>
-    var initialStatus = '${status.connection}';
+    var initialStatus = 'connecting';
     var toastTimer = null;
 
     function showToast(msg, cls) {
@@ -370,7 +342,9 @@ app.get("/", (req, res) => {
     function resetSession() {
       if (!confirm('Unlink the device and reset the session?')) return;
       showToast('Resetting session...', 'err');
-      setTimeout(function () { window.location.href = '/reset'; }, 400);
+      fetch('/reset', { method: 'POST' }).then(function () {
+        setTimeout(function () { location.reload(); }, 500);
+      }).catch(function () { location.reload(); });
     }
 
     async function pollOnce() {
@@ -399,159 +373,53 @@ app.get("/", (req, res) => {
       if (e.key === 'Enter') generatePairCode();
     });
 
-    if (initialStatus === 'connected') pollOnce();
+    // No server-injected status: always resolve this session's own state on load.
+    pollOnce();
   </script>
 </body>
 </html>`);
 });
 
-app.get("/status", (req, res) => res.json(status));
+// Every API route is scoped to the caller's own cookie session. A request can
+// only ever read or mutate the session bound to its own ztsid cookie.
+app.get("/status", (req, res) => {
+  const id = getOrSetSessionId(req, res);
+  sessionManager.startSession(id).catch(() => {});
+  res.json(sessionManager.getStatus(id));
+});
 
 app.post("/api/pair", async (req, res) => {
-  const { phone } = req.body;
+  const id = getOrSetSessionId(req, res);
+  const { phone } = req.body || {};
   if (!phone) return res.status(400).json({ error: "Phone number required" });
-  if (!globalSock) return res.status(500).json({ error: "Bot not initialized" });
+  const digits = String(phone).replace(/[^0-9]/g, "");
+  if (digits.length < 7) return res.status(400).json({ error: "Invalid phone number" });
   try {
-    await new Promise((r) => setTimeout(r, 2000));
-    const code = await globalSock.requestPairingCode(phone);
-    const fmt = code.match(/.{1,4}/g).join("-");
-    setStatus({ pairingCode: fmt });
-    res.json({ code: fmt });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.get("/reset", (req, res) => {
-  if (fs.existsSync(SESSION_DIR)) fs.rmSync(SESSION_DIR, { recursive: true, force: true });
-  res.send("Resetting... please wait.");
-  setTimeout(() => process.exit(0), 1000);
-});
-
-app.listen(PORT, () => console.log(chalk.cyan(`Dashboard: http://localhost:${PORT}`)));
-
-// ─── Bot Logic ───
-async function startBot() {
-  const { state, saveCreds } = await useMultiFileAuthState(SESSION_DIR);
-  const { version } = await fetchLatestWaWebVersion();
-
-  const sock = makeWASocket({
-    version,
-    logger: pino({ level: "silent" }),
-    auth: state,
-    browser: ["Windows", "Chrome", "110.0.5481.177"],
-    syncFullHistory: false,
-    markOnlineOnConnect: false,
-  });
-
-  globalSock = sock;
-
-  if (!sock.authState.creds.registered) {
-    setStatus({ connection: "pairing" });
-    const qrListener = async (update) => {
-      const { qr } = update;
-      if (!qr) return;
-      const svg = await buildQrSvg(qr);
-      setStatus({ qrCodeAvailable: true, qrCodeSvg: svg });
-      qrcodeTerminal.generate(qr, { small: true });
-    };
-    sock.ev.on("connection.update", qrListener, { unregister: true });
+    const { code } = await sessionManager.requestPair(id, digits);
+    res.json({ code });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
+});
 
-  sock.ev.on("connection.update", async (update) => {
-    const { connection, lastDisconnect } = update;
-    if (connection === "close") {
-      const code = new Boom(lastDisconnect?.error)?.output?.statusCode;
-      setStatus({ connection: "disconnected", pairingCode: null, qrCodeAvailable: false });
-      if (code === DisconnectReason.loggedOut) {
-        fs.rmSync(SESSION_DIR, { recursive: true, force: true });
-        process.exit(0);
-      } else { setTimeout(startBot, 5000); }
-    } else if (connection === "open") {
-      console.log(chalk.green(`\n✅ ${BOT_NAME} CONNECTED!`));
-      setStatus({ connection: "connected", botName: sock.user?.name, botId: sock.user?.id });
-    }
+app.post("/reset", async (req, res) => {
+  const id = getOrSetSessionId(req, res);
+  try {
+    await sessionManager.resetSession(id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Boot ───
+(async () => {
+  const restored = await sessionManager.restoreAll().catch((err) => {
+    console.error("restoreAll failed:", err.message);
+    return 0;
   });
-
-  sock.ev.on("creds.update", saveCreds);
-
-  sock.ev.on("messages.upsert", async ({ messages, type }) => {
-    if (type !== "notify") return;
-    for (const msg of messages) {
-      if (!msg.message) continue;
-      const jid = msg.key.remoteJid;
-      const text = (msg.message.conversation || msg.message.extendedTextMessage?.text || "").toLowerCase();
-      if (settings.antidelete && !msg.key.fromMe) messageStore[msg.key.id] = msg;
-
-      // Auto-view (and react to) status updates when enabled.
-      if (settings.autostatus && jid === "status@broadcast") {
-        try {
-          await sock.readMessages([msg.key]);
-        } catch (err) {
-          console.error("autostatus: failed to view status:", err.message);
-        }
-      }
-
-      // Anti-link: delete any link a non-admin sends in a group, warn them,
-      // and remove them once they hit 3 warnings.
-      if (settings.antilink && jid.endsWith("@g.us") && !msg.key.fromMe && LINK_REGEX.test(text)) {
-        try {
-          const groupMeta = await sock.groupMetadata(jid);
-          const sender = msg.key.participant;
-          const isAdmin = groupMeta.participants.find(p => p.id === sender)?.admin;
-          const isBot = sender?.split("@")[0] === sock.user?.id?.split(":")[0];
-          if (!isAdmin && !isBot && sender) {
-            await sock.sendMessage(jid, { delete: msg.key });
-            const key = `${jid}:${sender}`;
-            const count = (linkWarnings[key] || 0) + 1;
-            linkWarnings[key] = count;
-            if (count >= MAX_LINK_WARNINGS) {
-              delete linkWarnings[key];
-              await sock.sendMessage(jid, {
-                text: `🚫 *Anti-Link:* @${sender.split("@")[0]} hit ${MAX_LINK_WARNINGS}/${MAX_LINK_WARNINGS} warnings for sending links and has been removed.`,
-                mentions: [sender],
-              });
-              await sock.groupParticipantsUpdate(jid, [sender], "remove");
-            } else {
-              await sock.sendMessage(jid, {
-                text: `⚠️ *Anti-Link:* @${sender.split("@")[0]}, links aren't allowed here.\n*Warning ${count}/${MAX_LINK_WARNINGS}* — one more and you'll be removed.`,
-                mentions: [sender],
-              });
-            }
-          }
-        } catch (err) {
-          console.error("antilink: failed to process link:", err.message);
-        }
-      }
-      await handleCommand(sock, msg, { startTime, settings });
-    }
+  app.listen(PORT, () => {
+    console.log(chalk.cyan(`Dashboard: http://localhost:${PORT}`));
+    console.log(chalk.gray(`Restored ${restored} persisted session(s).`));
   });
-
-  sock.ev.on("messages.update", async (updates) => {
-    if (!settings.antidelete) return;
-    for (const update of updates) {
-      if (update.update.protocolMessage?.type === 0) {
-        const deletedId = update.update.protocolMessage.key.id;
-        const oldMsg = messageStore[deletedId];
-        if (oldMsg) {
-          const jid = oldMsg.key.remoteJid;
-          const sender = oldMsg.key.participant || jid;
-          await sock.sendMessage(jid, { text: `🛡️ *Anti-Delete Active*\n👤 *Sender:* @${sender.split("@")[0]}`, mentions: [sender] });
-          await sock.copyNForward(jid, oldMsg, false);
-        }
-      }
-    }
-  });
-
-  sock.ev.on("call", async (calls) => {
-    if (!settings.anticall) return;
-    for (const call of calls) {
-      if (call.status === "offer") {
-        await sock.rejectCall(call.id, call.from);
-        await sock.sendMessage(call.from, { text: `⚠️ *Anti-Call Active:* Calls are not allowed.` });
-      }
-    }
-  });
-
-  return sock;
-}
-
-startBot().catch(err => console.error("FATAL:", err));
+})();
